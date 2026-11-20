@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Production & Build outputs
+.next/
+out/
+build/
+dist/
+
+# Test coverage
+coverage/
+
+# Environment files
+.env*
+!.env.example
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS files
+.DS_Store
