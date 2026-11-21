@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Flame, X, Sparkles, Heart, Loader2 } from "lucide-react";
+import { Flame, X, Sparkles, Heart, Loader2, Eye, EyeOff, Trash2 } from "lucide-react";
 import { playLanternReleaseSound, playSparkSound } from "@/lib/soundEngine";
 import { getEvergreenTarget } from "@/lib/dateUtils";
+import { authClient } from "@/lib/authClient";
 
 export type LanternColor = "gold" | "ruby" | "cyan" | "violet";
 
@@ -18,6 +19,9 @@ export interface LanternItem {
   delay: number;
   scale: number;
   isUserCreated?: boolean;
+  isFeatured?: boolean;
+  userId?: string | null;
+  status?: "active" | "archived" | "hidden";
 }
 
 // Per-color SVG fill/glow values for the realistic paper lantern
@@ -187,6 +191,8 @@ interface BackendLantern {
   unlockAt?: string;
   sparks?: number;
   userId?: string | null;
+  isFeatured?: boolean;
+  status?: "active" | "archived" | "hidden";
   createdAt?: string;
 }
 
@@ -206,6 +212,9 @@ function mapBackendToLantern(item: BackendLantern, index: number): LanternItem {
     duration,
     delay,
     scale,
+    isFeatured: Boolean(item.isFeatured),
+    userId: item.userId ?? null,
+    status: item.status ?? "active",
   };
 }
 
@@ -221,6 +230,16 @@ export default function SkyLanternLayer({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [, setIsLoading] = useState(true);
   const [isSparking, setIsSparking] = useState(false);
+  const [isModerating, setIsModerating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Authentication state for role-based lantern controls
+  const { data: session } = authClient.useSession();
+  const currentUserId = session?.user?.id;
+  const currentUserRole = (session?.user as { role?: string } | undefined)?.role;
+  const isAdmin = currentUserRole === "admin";
+  const isModerator = currentUserRole === "moderator";
+  const isStaff = isAdmin || isModerator;
 
   // Fetch existing lanterns from backend API on mount
   useEffect(() => {
@@ -368,6 +387,9 @@ export default function SkyLanternLayer({
         delay: 0,
         scale: 1.15,
         isUserCreated: true,
+        isFeatured: Boolean(created.isFeatured),
+        userId: created.userId ?? currentUserId ?? null,
+        status: created.status ?? "active",
       };
 
       setLanterns((prev) => [newLantern, ...prev]);
@@ -431,6 +453,77 @@ export default function SkyLanternLayer({
       console.error("Error sparking lantern:", err);
     } finally {
       setIsSparking(false);
+    }
+  };
+
+  const handleToggleStatus = async (lantern: LanternItem) => {
+    if (!isStaff) return;
+    try {
+      setIsModerating(true);
+      const isCurrentlyHidden = lantern.status === "hidden";
+      const nextStatus = isCurrentlyHidden ? "active" : "hidden";
+
+      const res = await fetch(`${SERVER_URL}/api/lanterns/${lantern.id}/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ status: nextStatus }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to update lantern status");
+      }
+
+      const updated: BackendLantern = await res.json();
+      const resolvedStatus = updated.status || nextStatus;
+
+      setLanterns((prev) =>
+        prev.map((l) => (l.id === lantern.id ? { ...l, status: resolvedStatus } : l))
+      );
+      if (selectedLantern?.id === lantern.id) {
+        setSelectedLantern((prev) => (prev ? { ...prev, status: resolvedStatus } : null));
+      }
+    } catch (err) {
+      console.error("Error moderating lantern:", err);
+      alert(err instanceof Error ? err.message : "Error updating lantern status");
+    } finally {
+      setIsModerating(false);
+    }
+  };
+
+  const handleDeleteLantern = async (lantern: LanternItem) => {
+    const canDelete =
+      isAdmin ||
+      (currentUserRole === "user" && Boolean(lantern.userId && lantern.userId === currentUserId));
+
+    if (!canDelete) return;
+
+    if (!confirm(`Are you sure you want to delete this lantern wish by "${lantern.senderName}"? This cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+      const res = await fetch(`${SERVER_URL}/api/lanterns/${lantern.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to delete lantern");
+      }
+
+      setLanterns((prev) => prev.filter((l) => l.id !== lantern.id));
+      setSelectedLantern(null);
+    } catch (err) {
+      console.error("Error deleting lantern:", err);
+      alert(err instanceof Error ? err.message : "Error deleting lantern");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -631,7 +724,11 @@ export default function SkyLanternLayer({
                 className={`absolute left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full glass-card border border-white/20 text-[9px] sm:text-[10px] font-semibold tracking-wide ${cfg.text} whitespace-nowrap shadow-[0_2px_10px_rgba(0,0,0,0.7)] backdrop-blur-md flex items-center gap-1 group-hover:scale-105 transition-all pointer-events-none`}
                 style={{ bottom: `calc(100% + 4px)` }}
               >
-                <span className="w-1.5 h-1.5 rounded-full bg-current opacity-80 shadow-[0_0_4px_currentColor]" />
+                {lantern.isFeatured ? (
+                  <span className="text-amber-300 font-bold text-[10px] leading-none" title="Featured Pioneer Lantern">★</span>
+                ) : (
+                  <span className="w-1.5 h-1.5 rounded-full bg-current opacity-80 shadow-[0_0_4px_currentColor]" />
+                )}
                 <span>{lantern.senderName}</span>
               </div>
             </motion.div>
@@ -749,9 +846,21 @@ export default function SkyLanternLayer({
                   </g>
                 </svg>
                 <div>
-                  <span className="text-[10px] tracking-widest uppercase font-semibold text-slate-400">
-                    Sky Lantern Wish
-                  </span>
+                  <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                    <span className="text-[10px] tracking-widest uppercase font-semibold text-slate-400">
+                      Sky Lantern Wish
+                    </span>
+                    {selectedLantern.isFeatured && (
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                        ★ Featured
+                      </span>
+                    )}
+                    {selectedLantern.status === "hidden" && (
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                        Hidden
+                      </span>
+                    )}
+                  </div>
                   <h3 className="text-xl font-bold text-white">
                     {selectedLantern.senderName}
                   </h3>
@@ -769,23 +878,67 @@ export default function SkyLanternLayer({
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center justify-between gap-3">
-                <button
-                  type="button"
-                  disabled={isSparking}
-                  onClick={() => handleAddSpark(selectedLantern.id)}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl glass-card text-xs font-semibold text-amber-300 hover:text-white hover:border-amber-400/50 transition-all cursor-pointer group disabled:opacity-75 disabled:cursor-not-allowed"
-                >
-                  <Heart className={`w-4 h-4 text-rose-400 group-hover:scale-125 transition-transform ${isSparking ? "scale-125 animate-pulse" : ""}`} />
-                  <span>
-                    Spark Light ({sparksCount[selectedLantern.id] || 0})
-                  </span>
-                </button>
+              <div className="flex items-center justify-between gap-2.5 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    disabled={isSparking}
+                    onClick={() => handleAddSpark(selectedLantern.id)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl glass-card text-xs font-semibold text-amber-300 hover:text-white hover:border-amber-400/50 transition-all cursor-pointer group disabled:opacity-75 disabled:cursor-not-allowed"
+                  >
+                    <Heart className={`w-4 h-4 text-rose-400 group-hover:scale-125 transition-transform ${isSparking ? "scale-125 animate-pulse" : ""}`} />
+                    <span>
+                      Spark Light ({sparksCount[selectedLantern.id] || 0})
+                    </span>
+                  </button>
+
+                  {/* Hide/Unhide for Admin and Moderator */}
+                  {isStaff && (
+                    <button
+                      type="button"
+                      disabled={isModerating}
+                      onClick={() => handleToggleStatus(selectedLantern)}
+                      className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer active:scale-95 disabled:opacity-50 ${
+                        selectedLantern.status === "hidden"
+                          ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
+                          : "glass-card text-amber-300 hover:text-white border-amber-500/30 hover:border-amber-400/60"
+                      }`}
+                      title={selectedLantern.status === "hidden" ? "Unhide lantern" : "Hide lantern from public sky"}
+                    >
+                      {isModerating ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : selectedLantern.status === "hidden" ? (
+                        <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                      ) : (
+                        <EyeOff className="w-3.5 h-3.5 text-amber-400" />
+                      )}
+                      <span>{selectedLantern.status === "hidden" ? "Unhide" : "Hide"}</span>
+                    </button>
+                  )}
+
+                  {/* Delete: Admin on any lantern; User on own lantern; Moderator: never */}
+                  {(isAdmin || (currentUserRole === "user" && Boolean(selectedLantern.userId && selectedLantern.userId === currentUserId))) && (
+                    <button
+                      type="button"
+                      disabled={isDeleting}
+                      onClick={() => handleDeleteLantern(selectedLantern)}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl glass-card text-xs font-semibold text-rose-300 hover:text-white border border-rose-500/30 hover:border-rose-400/60 transition-colors cursor-pointer active:scale-95 disabled:opacity-50"
+                      title="Delete lantern"
+                    >
+                      {isDeleting ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3.5 h-3.5" />
+                      )}
+                      <span>Delete</span>
+                    </button>
+                  )}
+                </div>
 
                 <button
                   type="button"
                   onClick={() => setSelectedLantern(null)}
-                  className="px-5 py-2.5 rounded-xl glass-card text-xs font-semibold text-slate-300 hover:text-white transition-colors cursor-pointer"
+                  className="ml-auto px-5 py-2 rounded-xl glass-card text-xs font-semibold text-slate-300 hover:text-white transition-colors cursor-pointer active:scale-95"
                 >
                   Close
                 </button>

@@ -1,4 +1,8 @@
-import { Sparkles, Volume2, VolumeX, Flame, Compass } from "lucide-react";
+"use client";
+
+import Link from "next/link";
+import { Sparkles, Volume2, VolumeX, Flame, Compass, Shield } from "lucide-react";
+import { authClient } from "@/lib/authClient";
 
 interface NavbarProps {
   soundEnabled?: boolean;
@@ -13,6 +17,9 @@ export default function Navbar({
   onOpenReleaseModal,
   onOpenVaultModal,
 }: NavbarProps) {
+  const { data: session } = authClient.useSession();
+  const isAdmin = (session?.user as { role?: string } | undefined)?.role === "admin";
+
   return (
     <header className="relative z-20 w-full px-4 py-3.5 sm:px-6 sm:py-5 max-w-7xl mx-auto flex items-center justify-between">
       {/* Brand */}
@@ -32,6 +39,16 @@ export default function Navbar({
 
       {/* Navigation Actions */}
       <div className="flex items-center gap-2 sm:gap-3">
+        {isAdmin && (
+          <Link
+            href="/admin"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg glass-card text-xs font-semibold text-amber-300 border border-amber-500/30 hover:bg-amber-500/10 hover:border-amber-400/60 shadow-[0_0_10px_rgba(245,158,11,0.2)] transition-all cursor-pointer"
+          >
+            <Shield className="w-3.5 h-3.5 text-amber-400" />
+            <span>Admin</span>
+          </Link>
+        )}
+
         <button 
           type="button" 
           onClick={onOpenReleaseModal}

@@ -32,6 +32,7 @@ import {
   LayoutGrid,
   List as ListIcon,
   ChevronDown,
+  Shield,
 } from "lucide-react";
 import { getEvergreenTarget } from "@/lib/dateUtils";
 import { authClient } from "@/lib/authClient";
@@ -48,6 +49,7 @@ export interface MemoryItem {
   userId?: string;
   collectionId?: string | null;
   createdAt?: string;
+  isApproved?: boolean;
 }
 
 export interface CollectionItem {
@@ -120,6 +122,8 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
   const { data: session, isPending: isSessionLoading, refetch: refetchSession } = authClient.useSession();
   const currentUserId = session?.user?.id;
   const currentUserRole = (session?.user as { role?: string } | undefined)?.role;
+  const isStaff = currentUserRole === "admin" || currentUserRole === "moderator";
+  const [isUpdatingApproval, setIsUpdatingApproval] = useState(false);
 
   // Auth gate state
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
@@ -342,12 +346,19 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
         if (!finalImageUrl) { setFormError("Please provide a valid image URL."); setIsFormSubmitting(false); return; }
       }
 
-      const payload = {
-        title: formTitle.trim(), story: formStory.trim(),
-        imageUrl: finalImageUrl, year: Number(formYear),
-        visibility: formVisibility,
-        collectionId: formCollectionId ? formCollectionId : null,
+      const isOwnerOfEditingMemory = view === "create" || (memoryToEdit && memoryToEdit.userId === currentUserId);
+
+      const payload: Record<string, any> = {
+        title: formTitle.trim(),
+        story: formStory.trim(),
+        imageUrl: finalImageUrl,
+        year: Number(formYear),
       };
+
+      if (isOwnerOfEditingMemory) {
+        payload.visibility = formVisibility;
+        payload.collectionId = formCollectionId ? formCollectionId : null;
+      }
 
       if (view === "edit" && memoryToEdit) {
         const res = await fetch(`${SERVER_URL}/api/memories/${memoryToEdit._id}`, {
@@ -474,7 +485,42 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
 
   const canManageMemory = (memory: MemoryItem) => {
     if (!currentUserId) return false;
-    return memory.userId === currentUserId || currentUserRole === "admin";
+    // Nobody except the owner can access or manage another user's PRIVATE memories, including Admin
+    if (memory.visibility === "private") {
+      return memory.userId === currentUserId;
+    }
+    // Owners can manage their own memories; Admin and Moderator can manage other users' PUBLIC memories
+    return memory.userId === currentUserId || isStaff;
+  };
+
+  const handleToggleApproval = async (memory: MemoryItem) => {
+    if (!isStaff || memory.visibility === "private") return;
+    try {
+      setIsUpdatingApproval(true);
+      const nextApproved = memory.isApproved === false;
+      const res = await fetch(`${SERVER_URL}/api/memories/${memory._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ isApproved: nextApproved }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to update moderation status");
+      }
+      const updated: MemoryItem = await res.json();
+      setMemories((prev) =>
+        prev.map((m) => (m._id === updated._id ? { ...m, isApproved: updated.isApproved } : m))
+      );
+      if (selectedMemory?._id === updated._id) {
+        setSelectedMemory((prev) => (prev ? { ...prev, isApproved: updated.isApproved } : null));
+      }
+    } catch (err) {
+      console.error("Moderation error:", err);
+      alert(err instanceof Error ? err.message : "Error updating approval status");
+    } finally {
+      setIsUpdatingApproval(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -534,6 +580,24 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
                     <Badge className="hidden sm:inline-flex bg-cyan-500/15 border-cyan-500/30 text-cyan-300">
                       {totalMemories} {totalMemories === 1 ? "Memory" : "Memories"}
                     </Badge>
+                  )}
+                  {session?.user && (
+                    <span
+                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border shadow-sm ${
+                        currentUserRole === "admin"
+                          ? "bg-amber-500/15 text-amber-300 border-amber-500/40 shadow-amber-500/10"
+                          : currentUserRole === "moderator"
+                          ? "bg-purple-500/15 text-purple-300 border-purple-500/40 shadow-purple-500/10"
+                          : "bg-slate-500/15 text-slate-300 border-slate-500/30"
+                      }`}
+                    >
+                      <Shield className="w-2.5 h-2.5" />
+                      {currentUserRole === "admin"
+                        ? "Admin"
+                        : currentUserRole === "moderator"
+                        ? "Moderator"
+                        : "Member"}
+                    </span>
                   )}
                 </div>
                 <p className="text-[11px] sm:text-xs text-slate-400 truncate mt-0.5">{viewSubtitle}</p>
@@ -816,13 +880,13 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
                               className="glass-card rounded-2xl border border-white/10 hover:border-cyan-400/50 overflow-hidden flex flex-col cursor-pointer transition-all duration-300 hover:shadow-[0_0_28px_rgba(6,182,212,0.18)] hover:-translate-y-0.5 group active:scale-[0.98]"
                             >
                               {/* Thumbnail */}
-                              <div className="relative aspect-[4/3] w-full overflow-hidden bg-slate-900 shrink-0">
+                              <div className="relative aspect-[4/3] w-full overflow-hidden bg-[#07090f] shrink-0">
                                 {memory.imageUrl ? (
                                   <img
                                     src={memory.imageUrl}
                                     alt={memory.title}
                                     loading="lazy"
-                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                    className="w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-500"
                                   />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center text-slate-700 bg-white/[0.02]">
@@ -838,12 +902,18 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
                                       <Lock className="w-3 h-3" />
                                     </span>
                                   )}
+                                  {isStaff && memory.visibility !== "private" && memory.isApproved === false && (
+                                    <span title="Unapproved" className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/30 border border-rose-500/50 text-rose-200 backdrop-blur-sm flex items-center gap-1">
+                                      <EyeOff className="w-2.5 h-2.5" />
+                                      Unapproved
+                                    </span>
+                                  )}
                                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-black/60 border border-white/15 text-cyan-300 backdrop-blur-sm">
                                     {memory.year}
                                   </span>
                                 </div>
 
-                                {/* Owner actions */}
+                                {/* Manage actions */}
                                 {isOwner && (
                                   <div
                                     className="absolute top-2 left-2 flex items-center gap-1"
@@ -865,6 +935,24 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
                                     >
                                       <Trash2 className="w-3 h-3" />
                                     </button>
+                                    {isStaff && memory.visibility !== "private" && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleApproval(memory)}
+                                        title={memory.isApproved === false ? "Approve" : "Unapprove"}
+                                        className={`p-1.5 rounded-lg border backdrop-blur-sm transition-colors cursor-pointer ${
+                                          memory.isApproved === false
+                                            ? "bg-emerald-600/70 hover:bg-emerald-500 text-white border-emerald-400/50"
+                                            : "bg-black/60 hover:bg-amber-500 hover:text-slate-950 text-slate-300 border-white/15"
+                                        }`}
+                                      >
+                                        {memory.isApproved === false ? (
+                                          <CheckCircle2 className="w-3 h-3 text-emerald-300" />
+                                        ) : (
+                                          <EyeOff className="w-3 h-3" />
+                                        )}
+                                      </button>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -911,13 +999,13 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
                               className="glass-card rounded-xl border border-white/10 hover:border-cyan-400/40 p-2.5 sm:p-3 flex items-center gap-3 cursor-pointer transition-all hover:bg-white/[0.03] group active:scale-[0.99]"
                             >
                               {/* Thumbnail */}
-                              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden bg-slate-900 shrink-0">
+                              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden bg-[#07090f] shrink-0">
                                 {memory.imageUrl ? (
                                   <img
                                     src={memory.imageUrl}
                                     alt={memory.title}
                                     loading="lazy"
-                                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                                    className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-300"
                                   />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center text-slate-600">
@@ -936,6 +1024,12 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
                                     {memory.year}
                                   </span>
                                   {memory.visibility === "private" && <Lock className="w-3 h-3 text-amber-300 shrink-0" />}
+                                  {isStaff && memory.visibility !== "private" && memory.isApproved === false && (
+                                    <span className="px-1.5 py-px rounded text-[9px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 shrink-0 flex items-center gap-0.5">
+                                      <EyeOff className="w-2.5 h-2.5" />
+                                      Unapproved
+                                    </span>
+                                  )}
                                 </div>
                                 <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">{memory.story}</p>
                                 <div className="flex items-center gap-1.5 mt-1 text-[10px] text-slate-500">
@@ -951,9 +1045,27 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
                                 </div>
                               </div>
 
-                              {/* Owner actions */}
+                              {/* Manage actions (owner or staff) */}
                               {isOwner && (
                                 <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  {isStaff && memory.visibility !== "private" && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleApproval(memory)}
+                                      title={memory.isApproved === false ? "Approve memory" : "Unapprove memory"}
+                                      className={`p-2 rounded-lg transition-colors cursor-pointer ${
+                                        memory.isApproved === false
+                                          ? "text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/15"
+                                          : "text-slate-400 hover:text-amber-300 hover:bg-amber-500/15"
+                                      }`}
+                                    >
+                                      {memory.isApproved === false ? (
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                      ) : (
+                                        <EyeOff className="w-3.5 h-3.5" />
+                                      )}
+                                    </button>
+                                  )}
                                   <button
                                     type="button"
                                     onClick={() => handleStartEdit(memory)}
@@ -1152,10 +1264,28 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
 
                       {/* Author bar */}
                       <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl glass-card border border-white/10 text-xs">
-                        <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex items-center gap-2 min-w-0 flex-wrap">
                           <User className="w-4 h-4 text-cyan-400 shrink-0" />
                           <span className="text-slate-400">Author:</span>
                           <span className="font-semibold text-white truncate">{session.user.name || session.user.email}</span>
+                          {currentUserRole && (
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ml-1 ${
+                                currentUserRole === "admin"
+                                  ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                                  : currentUserRole === "moderator"
+                                  ? "bg-purple-500/20 text-purple-300 border-purple-500/40"
+                                  : "bg-white/10 text-slate-300 border-white/10"
+                              }`}
+                            >
+                              <Shield className="w-2.5 h-2.5" />
+                              {currentUserRole === "admin"
+                                ? "Admin"
+                                : currentUserRole === "moderator"
+                                ? "Moderator"
+                                : "Member"}
+                            </span>
+                          )}
                         </div>
                         <button
                           type="button"
@@ -1359,8 +1489,8 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
                               className="w-full px-3.5 py-2.5 rounded-xl glass-card border border-white/10 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-cyan-400/50 transition-colors"
                             />
                             {directImageUrl.trim() && (
-                              <div className="mt-2 rounded-xl overflow-hidden h-28 w-full glass-card border border-white/10">
-                                <img src={directImageUrl} alt="URL preview" className="w-full h-full object-cover" />
+                              <div className="mt-2 rounded-xl overflow-hidden w-full glass-card border border-white/10 bg-[#07090f] flex items-center justify-center">
+                                <img src={directImageUrl} alt="URL preview" className="w-full max-h-36 object-contain" />
                               </div>
                             )}
                           </div>
@@ -1429,8 +1559,8 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
 
                 {/* Cover image */}
                 {selectedMemory.imageUrl && (
-                  <div className="relative h-48 sm:h-64 w-full overflow-hidden bg-black shrink-0">
-                    <img src={selectedMemory.imageUrl} alt={selectedMemory.title} className="w-full h-full object-cover" />
+                  <div className="relative w-full overflow-hidden bg-[#07090f] shrink-0 flex items-center justify-center">
+                    <img src={selectedMemory.imageUrl} alt={selectedMemory.title} className="w-full max-h-72 sm:max-h-80 object-contain" />
                     <div className="absolute inset-0 bg-gradient-to-t from-[#0a0d1d] via-transparent to-transparent pointer-events-none" />
                   </div>
                 )}
@@ -1442,9 +1572,32 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
                     <Badge className="bg-cyan-500/20 border-cyan-500/30 text-cyan-300">
                       {selectedMemory.year} Horizon
                     </Badge>
-                    {selectedMemory.visibility === "private" && (
+                    {selectedMemory.visibility === "private" ? (
                       <Badge className="bg-amber-500/20 border-amber-500/30 text-amber-300">
                         <Lock className="w-2.5 h-2.5" /> Private
+                      </Badge>
+                    ) : (
+                      <Badge className="bg-cyan-500/10 border-cyan-500/25 text-cyan-300">
+                        <Globe className="w-2.5 h-2.5" /> Public
+                      </Badge>
+                    )}
+                    {isStaff && selectedMemory.visibility !== "private" && (
+                      <Badge
+                        className={
+                          selectedMemory.isApproved === false
+                            ? "bg-rose-500/20 border-rose-500/40 text-rose-300"
+                            : "bg-emerald-500/20 border-emerald-500/40 text-emerald-300"
+                        }
+                      >
+                        {selectedMemory.isApproved === false ? (
+                          <>
+                            <EyeOff className="w-2.5 h-2.5" /> Unapproved
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-2.5 h-2.5" /> Approved
+                          </>
+                        )}
                       </Badge>
                     )}
                     {selectedMemory.createdAt && (
@@ -1471,24 +1624,47 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
 
                   {/* Footer actions */}
                   <div className="mt-5 flex items-center justify-between gap-3 flex-wrap">
-                    {canManageMemory(selectedMemory) && (
-                      <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {canManageMemory(selectedMemory) && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleStartEdit(selectedMemory)}
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-xl glass-card text-xs font-semibold text-cyan-300 hover:text-white border border-cyan-500/30 hover:border-cyan-400/60 transition-colors cursor-pointer active:scale-95"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setMemoryToDelete(selectedMemory)}
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-xl glass-card text-xs font-semibold text-rose-300 hover:text-white border border-rose-500/30 hover:border-rose-400/60 transition-colors cursor-pointer active:scale-95"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />Delete
+                          </button>
+                        </>
+                      )}
+                      {isStaff && selectedMemory.visibility !== "private" && (
                         <button
                           type="button"
-                          onClick={() => handleStartEdit(selectedMemory)}
-                          className="flex items-center gap-1.5 px-4 py-2 rounded-xl glass-card text-xs font-semibold text-cyan-300 hover:text-white border border-cyan-500/30 hover:border-cyan-400/60 transition-colors cursor-pointer active:scale-95"
+                          disabled={isUpdatingApproval}
+                          onClick={() => handleToggleApproval(selectedMemory)}
+                          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer active:scale-95 disabled:opacity-50 ${
+                            selectedMemory.isApproved === false
+                              ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
+                              : "glass-card text-amber-300 hover:text-white border-amber-500/30 hover:border-amber-400/60"
+                          }`}
                         >
-                          <Edit2 className="w-3.5 h-3.5" />Edit
+                          {isUpdatingApproval ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : selectedMemory.isApproved === false ? (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                          ) : (
+                            <EyeOff className="w-3.5 h-3.5 text-amber-400" />
+                          )}
+                          <span>{selectedMemory.isApproved === false ? "Approve" : "Unapprove"}</span>
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => setMemoryToDelete(selectedMemory)}
-                          className="flex items-center gap-1.5 px-4 py-2 rounded-xl glass-card text-xs font-semibold text-rose-300 hover:text-white border border-rose-500/30 hover:border-rose-400/60 transition-colors cursor-pointer active:scale-95"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />Delete
-                        </button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                     <button
                       type="button"
                       onClick={() => setSelectedMemory(null)}
