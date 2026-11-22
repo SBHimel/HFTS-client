@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   Filter,
 } from "lucide-react";
+import ImageLightbox from "@/components/ui/ImageLightbox";
 
 export interface MemoryItem {
   _id: string;
@@ -73,6 +74,9 @@ export default function MemoryModerationTab({ onShowToast }: MemoryModerationTab
   const [memoryToDelete, setMemoryToDelete] = useState<MemoryItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  // Lightbox state
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   // Debounce search input
   useEffect(() => {
@@ -458,7 +462,11 @@ export default function MemoryModerationTab({ onShowToast }: MemoryModerationTab
                       // Fallback icon styling on broken URL
                       e.currentTarget.style.display = "none";
                     }}
-                    className="w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-300"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLightboxSrc(memory.imageUrl);
+                    }}
+                    className="w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-300 cursor-zoom-in"
                     loading="lazy"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 pointer-events-none" />
@@ -659,7 +667,8 @@ export default function MemoryModerationTab({ onShowToast }: MemoryModerationTab
                 <img
                   src={selectedMemory.imageUrl}
                   alt={selectedMemory.title}
-                  className="w-full h-full object-contain max-h-72 sm:max-h-80"
+                  onClick={() => setLightboxSrc(selectedMemory.imageUrl)}
+                  className="w-full h-full object-contain max-h-72 sm:max-h-80 cursor-zoom-in"
                 />
               </div>
 
@@ -816,6 +825,14 @@ export default function MemoryModerationTab({ onShowToast }: MemoryModerationTab
           </div>
         )}
       </AnimatePresence>
+
+      {/* ── Full-screen image lightbox ──────────────────────────────────── */}
+      <ImageLightbox
+        src={lightboxSrc ?? ""}
+        alt="Memory image"
+        isOpen={lightboxSrc !== null}
+        onClose={() => setLightboxSrc(null)}
+      />
     </div>
   );
 }

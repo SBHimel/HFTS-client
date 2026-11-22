@@ -37,6 +37,7 @@ import {
 import { getEvergreenTarget } from "@/lib/dateUtils";
 import { authClient } from "@/lib/authClient";
 import { playLanternReleaseSound } from "@/lib/soundEngine";
+import ImageLightbox from "@/components/ui/ImageLightbox";
 
 export interface MemoryItem {
   _id: string;
@@ -163,6 +164,9 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
   // Delete Confirmation state
   const [memoryToDelete, setMemoryToDelete] = useState<MemoryItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Lightbox state
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   // Create / Edit Form state
   const [memoryToEdit, setMemoryToEdit] = useState<MemoryItem | null>(null);
@@ -534,7 +538,8 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <AnimatePresence>
+    <>
+      <AnimatePresence>
       <div
         className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/85 backdrop-blur-md overflow-hidden"
         onClick={onClose}
@@ -886,7 +891,8 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
                                     src={memory.imageUrl}
                                     alt={memory.title}
                                     loading="lazy"
-                                    className="w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-500"
+                                    onClick={(e) => { e.stopPropagation(); setLightboxSrc(memory.imageUrl); }}
+                                    className="w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-500 cursor-zoom-in"
                                   />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center text-slate-700 bg-white/[0.02]">
@@ -1005,7 +1011,8 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
                                     src={memory.imageUrl}
                                     alt={memory.title}
                                     loading="lazy"
-                                    className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-300"
+                                    onClick={(e) => { e.stopPropagation(); setLightboxSrc(memory.imageUrl); }}
+                                    className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-300 cursor-zoom-in"
                                   />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center text-slate-600">
@@ -1560,7 +1567,12 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
                 {/* Cover image */}
                 {selectedMemory.imageUrl && (
                   <div className="relative w-full overflow-hidden bg-[#07090f] shrink-0 flex items-center justify-center">
-                    <img src={selectedMemory.imageUrl} alt={selectedMemory.title} className="w-full max-h-72 sm:max-h-80 object-contain" />
+                    <img
+                      src={selectedMemory.imageUrl}
+                      alt={selectedMemory.title}
+                      onClick={() => setLightboxSrc(selectedMemory.imageUrl)}
+                      className="w-full max-h-72 sm:max-h-80 object-contain cursor-zoom-in"
+                    />
                     <div className="absolute inset-0 bg-gradient-to-t from-[#0a0d1d] via-transparent to-transparent pointer-events-none" />
                   </div>
                 )}
@@ -1787,5 +1799,14 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
         </AnimatePresence>
       </div>
     </AnimatePresence>
+
+      {/* ── Full-screen image lightbox ──────────────────────────────────── */}
+      <ImageLightbox
+        src={lightboxSrc ?? ""}
+        alt="Memory image"
+        isOpen={lightboxSrc !== null}
+        onClose={() => setLightboxSrc(null)}
+      />
+    </>
   );
 }
