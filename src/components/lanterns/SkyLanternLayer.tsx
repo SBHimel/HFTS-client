@@ -178,8 +178,6 @@ interface SkyLanternLayerProps {
   isCelebrating?: boolean;
 }
 
-const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
-
 interface BackendLantern {
   _id: string;
   senderName: string;
@@ -250,7 +248,7 @@ export default function SkyLanternLayer({
     async function loadLanterns() {
       try {
         setIsLoading(true);
-        const res = await fetch(`${SERVER_URL}/api/lanterns?year=${targetYear}`, {
+        const res = await fetch(`/api/lanterns?year=${targetYear}`, {
           credentials: "include",
         });
 
@@ -356,7 +354,7 @@ export default function SkyLanternLayer({
       setIsSubmitting(true);
       setFormError("");
 
-      const res = await fetch(`${SERVER_URL}/api/lanterns`, {
+      const res = await fetch(`/api/lanterns`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -432,7 +430,7 @@ export default function SkyLanternLayer({
 
     try {
       setIsSparking(true);
-      const res = await fetch(`${SERVER_URL}/api/lanterns/${id}/spark`, {
+      const res = await fetch(`/api/lanterns/${id}/spark`, {
         method: "PATCH",
         credentials: "include",
       });
@@ -463,7 +461,7 @@ export default function SkyLanternLayer({
       const isCurrentlyHidden = lantern.status === "hidden";
       const nextStatus = isCurrentlyHidden ? "active" : "hidden";
 
-      const res = await fetch(`${SERVER_URL}/api/lanterns/${lantern.id}/status`, {
+      const res = await fetch(`/api/lanterns/${lantern.id}/status`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -507,7 +505,7 @@ export default function SkyLanternLayer({
 
     try {
       setIsDeleting(true);
-      const res = await fetch(`${SERVER_URL}/api/lanterns/${lantern.id}`, {
+      const res = await fetch(`/api/lanterns/${lantern.id}`, {
         method: "DELETE",
         credentials: "include",
       });

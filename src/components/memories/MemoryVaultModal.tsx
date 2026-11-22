@@ -65,8 +65,6 @@ interface MemoryVaultModalProps {
   onClose: () => void;
 }
 
-const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
-
 // ─── Shared micro-components ───────────────────────────────────────────────
 
 function Badge({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -199,7 +197,7 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
     if (!currentUserId) { setCollections([]); return; }
     try {
       setIsCollectionsLoading(true);
-      const res = await fetch(`${SERVER_URL}/api/collections`, { credentials: "include" });
+      const res = await fetch(`/api/collections`, { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
         setCollections(Array.isArray(data) ? data : []);
@@ -230,7 +228,7 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
         params.append("page", String(targetPage));
         params.append("limit", "12");
 
-        const res = await fetch(`${SERVER_URL}/api/memories?${params.toString()}`, {
+        const res = await fetch(`/api/memories?${params.toString()}`, {
           credentials: "include",
         });
 
@@ -286,9 +284,9 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
 
   const handleStartEdit = (memory: MemoryItem) => {
     setMemoryToEdit(memory);
-    setFormTitle(memory.title);
-    setFormStory(memory.story);
-    setFormYear(memory.year);
+    setFormTitle(memory.title || "");
+    setFormStory(memory.story || "");
+    setFormYear(memory.year || currentTargetYear);
     setFormVisibility(memory.visibility || "public");
     setFormCollectionId(memory.collectionId || "");
     setImageMode("url");
@@ -331,7 +329,7 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
           setFormError("Please select an image to upload."); setIsFormSubmitting(false); return;
         }
         if (selectedFileBase64) {
-          const uploadRes = await fetch(`${SERVER_URL}/api/memories/upload`, {
+          const uploadRes = await fetch(`/api/memories/upload`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "include",
@@ -365,7 +363,7 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
       }
 
       if (view === "edit" && memoryToEdit) {
-        const res = await fetch(`${SERVER_URL}/api/memories/${memoryToEdit._id}`, {
+        const res = await fetch(`/api/memories/${memoryToEdit._id}`, {
           method: "PATCH", headers: { "Content-Type": "application/json" },
           credentials: "include", body: JSON.stringify(payload),
         });
@@ -374,7 +372,7 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
         setMemories((prev) => prev.map((m) => (m._id === updated._id ? { ...m, ...updated } : m)));
         setFormSuccess("Memory updated successfully!");
       } else {
-        const res = await fetch(`${SERVER_URL}/api/memories`, {
+        const res = await fetch(`/api/memories`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           credentials: "include", body: JSON.stringify(payload),
         });
@@ -398,7 +396,7 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
     if (!memoryToDelete) return;
     try {
       setIsDeleting(true);
-      const res = await fetch(`${SERVER_URL}/api/memories/${memoryToDelete._id}`, {
+      const res = await fetch(`/api/memories/${memoryToDelete._id}`, {
         method: "DELETE", credentials: "include",
       });
       if (!res.ok) { const data = await res.json().catch(() => null); throw new Error(data?.message || "Failed to delete memory."); }
@@ -418,13 +416,13 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
     if (!newCollectionName.trim()) return;
     try {
       if (editingCollection) {
-        const res = await fetch(`${SERVER_URL}/api/collections/${editingCollection._id}`, {
+        const res = await fetch(`/api/collections/${editingCollection._id}`, {
           method: "PATCH", headers: { "Content-Type": "application/json" },
           credentials: "include", body: JSON.stringify({ name: newCollectionName.trim() }),
         });
         if (res.ok) { const updated = await res.json(); setCollections((prev) => prev.map((c) => (c._id === updated._id ? updated : c))); }
       } else {
-        const res = await fetch(`${SERVER_URL}/api/collections`, {
+        const res = await fetch(`/api/collections`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           credentials: "include", body: JSON.stringify({ name: newCollectionName.trim() }),
         });
@@ -439,7 +437,7 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
   const handleDeleteCollection = async (colId: string) => {
     if (!confirm("Delete this collection? Its memories will move to Uncategorized.")) return;
     try {
-      const res = await fetch(`${SERVER_URL}/api/collections/${colId}`, { method: "DELETE", credentials: "include" });
+      const res = await fetch(`/api/collections/${colId}`, { method: "DELETE", credentials: "include" });
       if (res.ok) {
         setCollections((prev) => prev.filter((c) => c._id !== colId));
         if (selectedCollection === colId) setSelectedCollection("all");
@@ -502,7 +500,7 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
     try {
       setIsUpdatingApproval(true);
       const nextApproved = memory.isApproved === false;
-      const res = await fetch(`${SERVER_URL}/api/memories/${memory._id}`, {
+      const res = await fetch(`/api/memories/${memory._id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -1334,7 +1332,7 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
                         </label>
                         <input
                           type="text"
-                          value={formTitle}
+                          value={formTitle || ""}
                           onChange={(e) => setFormTitle(e.target.value)}
                           placeholder="e.g. Midnight Sparks with Loved Ones"
                           maxLength={80}
@@ -1349,7 +1347,7 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
                           Story or Reflection <span className="text-rose-400">*</span>
                         </label>
                         <textarea
-                          value={formStory}
+                          value={formStory || ""}
                           onChange={(e) => setFormStory(e.target.value)}
                           placeholder="Describe the moment, reflections, or gratitude you want to preserve…"
                           rows={4}
@@ -1368,7 +1366,7 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
                           </label>
                           <input
                             type="number"
-                            value={formYear}
+                            value={formYear ?? ""}
                             onChange={(e) => setFormYear(Number(e.target.value))}
                             min={2020} max={2100}
                             className="w-full px-3.5 py-2.5 rounded-xl glass-card border border-white/10 text-white text-sm focus:outline-none focus:border-cyan-400/50 transition-colors"
@@ -1454,9 +1452,18 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
                           </div>
                         </div>
 
+                        {/* Hidden file input kept stably mounted with dedicated key to prevent DOM node reuse */}
+                        <input
+                          key="memory-file-input"
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleFileChange}
+                          className="hidden"
+                        />
+
                         {imageMode === "upload" ? (
-                          <div>
-                            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+                          <div key="image-upload-panel">
                             {!selectedFileBase64 && !directImageUrl ? (
                               <div
                                 onClick={() => fileInputRef.current?.click()}
@@ -1487,8 +1494,9 @@ export default function MemoryVaultModal({ isOpen, onClose }: MemoryVaultModalPr
                             )}
                           </div>
                         ) : (
-                          <div>
+                          <div key="image-url-panel">
                             <input
+                              key="memory-url-input"
                               type="url"
                               value={directImageUrl}
                               onChange={(e) => setDirectImageUrl(e.target.value)}

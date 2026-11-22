@@ -51,8 +51,6 @@ interface MemoryModerationTabProps {
   onShowToast: (text: string, type?: "success" | "error") => void;
 }
 
-const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
-
 export default function MemoryModerationTab({ onShowToast }: MemoryModerationTabProps) {
   // Memories & State
   const [memories, setMemories] = useState<MemoryItem[]>([]);
@@ -115,7 +113,7 @@ export default function MemoryModerationTab({ onShowToast }: MemoryModerationTab
           params.append("isApproved", "false");
         }
 
-        const res = await fetch(`${SERVER_URL}/api/memories?${params.toString()}`, {
+        const res = await fetch(`/api/memories?${params.toString()}`, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
@@ -159,7 +157,7 @@ export default function MemoryModerationTab({ onShowToast }: MemoryModerationTab
     setUpdatingId(memory._id);
 
     try {
-      const res = await fetch(`${SERVER_URL}/api/memories/${memory._id}`, {
+      const res = await fetch(`/api/memories/${memory._id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -209,7 +207,7 @@ export default function MemoryModerationTab({ onShowToast }: MemoryModerationTab
     setIsDeleting(true);
 
     try {
-      const res = await fetch(`${SERVER_URL}/api/memories/${memoryToDelete._id}`, {
+      const res = await fetch(`/api/memories/${memoryToDelete._id}`, {
         method: "DELETE",
         credentials: "include",
       });

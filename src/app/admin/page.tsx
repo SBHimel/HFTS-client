@@ -48,8 +48,6 @@ interface UsersApiResponse {
   message?: string;
 }
 
-const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
-
 export default function AdminDashboardPage() {
   // Authentication & Session
   const { data: session, isPending: isSessionLoading } = authClient.useSession();
@@ -119,7 +117,7 @@ export default function AdminDashboardPage() {
           queryParams.set("search", debouncedSearch);
         }
 
-        const res = await fetch(`${SERVER_URL}/api/admin/users?${queryParams.toString()}`, {
+        const res = await fetch(`/api/admin/users?${queryParams.toString()}`, {
           credentials: "include",
         });
 
@@ -166,7 +164,7 @@ export default function AdminDashboardPage() {
     try {
       setIsSubmittingRole(true);
 
-      const res = await fetch(`${SERVER_URL}/api/admin/users/${user.id}/role`, {
+      const res = await fetch(`/api/admin/users/${user.id}/role`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
